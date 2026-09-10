@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>What Is Love - Rhythm Battle</title>
+<link rel="stylesheet" href="style.css">
+</head>
+
+<body>
+
+<div id="game">
+
+    <div id="startScreen">
+        <h1>WHAT IS LOVE?</h1>
+        <p>Um duelo musical de ritmo</p>
+        <p>Use ← ↓ ↑ → para acertar as notas</p>
+        <button id="startButton">COMEÇAR</button>
+    </div>
+
+    <div id="topbar">
+        <div id="song">WHAT IS LOVE?</div>
+        <div id="score">Score: 0 | Combo: 0</div>
+
+        <div id="healthContainer">
+            <div id="health"></div>
+        </div>
+    </div>
+
+    <div class="city">
+        <div class="building b1"></div>
+        <div class="building b2"></div>
+        <div class="building b3"></div>
+        <div class="building b4"></div>
+        <div class="building b5"></div>
+        <div class="building b6"></div>
+    </div>
+
+    <div id="enemy" class="character">
+        🤖
+    </div>
+
+    <div id="player" class="character">
+        😎
+    </div>
+
+    <div id="noteArea">
+        <div class="lane"></div>
+        <div class="lane"></div>
+        <div class="lane"></div>
+        <div class="lane"></div>
+    </div>
+
+    <div id="targets">
+        <div class="target">←</div>
+        <div class="target">↓</div>
+        <div class="target">↑</div>
+        <div class="target">→</div>
+    </div>
+
+    <div id="message"></div>
+
+    <div id="mobileControls">
+        <button class="mobileButton" data-key="ArrowLeft">←</button>
+        <button class="mobileButton" data-key="ArrowDown">↓</button>
+        <button class="mobileButton" data-key="ArrowUp">↑</button>
+        <button class="mobileButton" data-key="ArrowRight">→</button>
+    </div>
+
+    <div id="resultScreen">
+    <div class="resultBox">
+        <h1>FIM DA MÚSICA!</h1>
+
+        <div class="resultItem">
+            <span>🏆 SCORE</span>
+            <strong id="finalScore">0</strong>
+        </div>
+
+        <div class="resultItem">
+            <span>🔥 MELHOR COMBO</span>
+            <strong id="finalCombo">0</strong>
+        </div>
+
+        <div class="resultItem bestScore">
+            <span>⭐ MELHOR PONTUAÇÃO</span>
+            <strong id="bestScore">0</strong>
+        </div>
+
+        <button id="restartButton">REINICIAR</button>
+    </div>
+    </div>
+
+</div>
+
+<audio id="music" src="videoplayback.mp4"></audio>
+
+<script src="script.js"></script>
+
+</body>
+</html>
