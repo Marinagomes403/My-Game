@@ -1,4 +1,5 @@
 const music = document.getElementById("music");
+
 const startScreen = document.getElementById("startScreen");
 const startButton = document.getElementById("startButton");
 
@@ -19,15 +20,18 @@ const message = document.getElementById("message");
 const player = document.getElementById("player");
 const enemy = document.getElementById("enemy");
 
+const mobileButtons = document.querySelectorAll(".mobileButton");
+
 let score = 0;
 let combo = 0;
 let maxCombo = 0;
-let hp = 50;
+let hp = 100;
 
 let notes = [];
 let gameRunning = false;
 
 let lastChartIndex = 0;
+let animationFrame = null;
 
 const keys = [
     "ArrowLeft",
@@ -38,21 +42,41 @@ const keys = [
 
 const symbols = ["←", "↓", "↑", "→"];
 
-const MAX_GAME_TIME = 15;
+const colors = [
+    "#ff4c7a",
+    "#48a8ff",
+    "#5cff87",
+    "#d56cff"
+];
 
 /*
-    Melhor pontuação salva no navegador.
-*/
+    Tempo de duração do jogo.
 
+    Coloque 0 para deixar a música decidir
+    quando o jogo termina.
+*/
+const MAX_GAME_TIME = 17;
+
+/*
+    Distância vertical onde a nota deve ser acertada.
+*/
+const HIT_Y = window.innerHeight - 160;
+
+/*
+    Velocidade das notas em pixels por segundo.
+*/
+const NOTE_SPEED = 300;
+
+/*
+    Melhor pontuação.
+*/
 let bestScore = Number(localStorage.getItem("bestScore")) || 0;
 
-/*
-    Cada número representa uma nota.
 
-    0 = esquerda
-    1 = baixo
-    2 = cima
-    3 = direita
+/*
+========================================
+CHART
+========================================
 */
 
 const chart = [
@@ -85,6 +109,13 @@ const chart = [
     [14.5, 2]
 ];
 
+
+/*
+========================================
+INICIAR
+========================================
+*/
+
 startButton.addEventListener("click", startGame);
 restartButton.addEventListener("click", startGame);
 
@@ -96,22 +127,45 @@ function startGame() {
     score = 0;
     combo = 0;
     maxCombo = 0;
-    hp = 50;
+    hp = 100;
 
+    lastChartIndex = 0;
+
+    /*
+        Cancela o loop anterior.
+    */
+    if (animationFrame) {
+        cancelAnimationFrame(animationFrame);
+    }
+
+    /*
+        Remove notas antigas.
+    */
     notes.forEach(note => {
+
         if (note.element) {
             note.element.remove();
         }
+
     });
 
     notes = [];
 
-    lastChartIndex = 0;
-
+    /*
+        Reinicia música.
+    */
     music.pause();
     music.currentTime = 0;
 
-    music.play();
+    const playPromise = music.play();
+
+    if (playPromise !== undefined) {
+
+        playPromise.catch(error => {
+            console.log("Não foi possível iniciar a música:", error);
+        });
+
+    }
 
     gameRunning = true;
 
@@ -120,8 +174,29 @@ function startGame() {
 
     updateInterface();
 
-    requestAnimationFrame(gameLoop);
+    /*
+        Guarda o tempo do último frame.
+    */
+    lastFrameTime = performance.now();
+
+    animationFrame = requestAnimationFrame(gameLoop);
 }
+
+
+/*
+========================================
+TEMPO DOS FRAMES
+========================================
+*/
+
+let lastFrameTime = performance.now();
+
+
+/*
+========================================
+CRIAR NOTA
+========================================
+*/
 
 function createNote(lane) {
 
@@ -131,14 +206,13 @@ function createNote(lane) {
     note.textContent = symbols[lane];
 
     note.style.left = `${lane * 25}%`;
+
+    /*
+        Começa acima da tela.
+    */
     note.style.top = "-80px";
 
-    note.style.color = [
-        "#ff4c7a",
-        "#48a8ff",
-        "#5cff87",
-        "#d56cff"
-    ][lane];
+    note.style.color = colors[lane];
 
     noteArea.appendChild(note);
 
@@ -152,11 +226,46 @@ function createNote(lane) {
     notes.push(obj);
 }
 
-function gameLoop() {
 
-    if (!gameRunning) return;
+/*
+========================================
+GAME LOOP
+========================================
+*/
+
+function gameLoop(timestamp) {
+
+    if (!gameRunning) {
+        return;
+    }
+
+    /*
+        Calcula exatamente quanto tempo passou.
+        Isso evita que a velocidade dependa do FPS.
+    */
+    const deltaTime = Math.min(
+        (timestamp - lastFrameTime) / 1000,
+        0.05
+    );
+
+    lastFrameTime = timestamp;
 
     const currentTime = music.currentTime;
+
+
+    /*
+    ----------------------------------------
+    CRIAÇÃO DAS NOTAS
+    ----------------------------------------
+    */
+
+    /*
+        A nota precisa nascer antes do momento
+        em que deve ser acertada.
+
+        Aqui usamos aproximadamente 1.2 segundos
+        de antecipação.
+    */
 
     while (
         lastChartIndex < chart.length &&
@@ -165,193 +274,349 @@ function gameLoop() {
 
         const [time, lane] = chart[lastChartIndex];
 
-        if (time <= currentTime + 1.2) {
-            createNote(lane);
-            lastChartIndex++;
-        }
+        createNote(lane);
+
+        lastChartIndex++;
     }
+
+
+    /*
+    ----------------------------------------
+    MOVIMENTO DAS NOTAS
+    ----------------------------------------
+    */
 
     for (let i = notes.length - 1; i >= 0; i--) {
 
         const note = notes[i];
 
-        if (note.hit) continue;
+        if (note.hit) {
+            continue;
+        }
 
-        note.y += 7;
+        /*
+            Movimento baseado em tempo,
+            não em quantidade de frames.
+        */
+        note.y += NOTE_SPEED * deltaTime;
 
-        note.element.style.top = note.y + "px";
+        note.element.style.top = `${note.y}px`;
 
-        if (note.y > window.innerHeight - 80) {
+
+        /*
+        ------------------------------------
+        NOTA PERDIDA
+        ------------------------------------
+        */
+
+        if (note.y > window.innerHeight + 50) {
 
             miss();
 
             note.element.remove();
+
             notes.splice(i, 1);
         }
     }
 
+
     /*
-        Quando a música terminar,
-        mostra a tela de resultado.
+    ----------------------------------------
+    FIM DO JOGO
+    ----------------------------------------
     */
 
-    if (currentTime >= MAX_GAME_TIME || music.ended) {
-    music.pause();
-    endGame();
-    return;
+    /*
+        Se MAX_GAME_TIME for maior que zero,
+        usa esse limite.
+    */
+    if (
+        MAX_GAME_TIME > 0 &&
+        currentTime >= MAX_GAME_TIME
+    ) {
+
+        endGame();
+        return;
+    }
+
+
+    /*
+        Caso a música tenha terminado.
+    */
+    if (music.ended) {
+
+        /*
+            Espera as últimas notas terminarem.
+        */
+        if (notes.length === 0) {
+            endGame();
+            return;
+        }
+    }
+
+
+    animationFrame = requestAnimationFrame(gameLoop);
 }
 
-    requestAnimationFrame(gameLoop);
-}
+
+/*
+========================================
+ACERTAR NOTA
+========================================
+*/
 
 function hitNote(key) {
 
+    if (!gameRunning) {
+        return;
+    }
+
     const lane = keys.indexOf(key);
 
-    if (lane === -1) return;
+    if (lane === -1) {
+        return;
+    }
 
+
+    /*
+        Anima o alvo.
+    */
     targets[lane].classList.add("active");
 
     setTimeout(() => {
         targets[lane].classList.remove("active");
     }, 100);
 
+
+    /*
+        Procura a nota mais próxima.
+    */
     let closest = null;
     let closestDistance = Infinity;
 
+
     notes.forEach(note => {
 
-        if (note.hit || note.lane !== lane) return;
+        if (note.hit) {
+            return;
+        }
 
-        const targetY = window.innerHeight - 160;
+        if (note.lane !== lane) {
+            return;
+        }
 
-        const distance = Math.abs(note.y - targetY);
+
+        const distance = Math.abs(
+            note.y - HIT_Y
+        );
+
 
         if (distance < closestDistance) {
+
             closestDistance = distance;
             closest = note;
         }
+
     });
 
+
+    /*
+        Janela de acerto.
+    */
     if (closest && closestDistance < 100) {
 
         closest.hit = true;
+
         closest.element.classList.add("hit");
 
         combo++;
-
-        /*
-            Guarda o maior combo alcançado.
-        */
 
         if (combo > maxCombo) {
             maxCombo = combo;
         }
 
+
+        /*
+            Pontuação.
+        */
         const points = 100 + combo * 10;
 
         score += points;
 
-        hp = Math.min(100, hp + 2);
 
-        showMessage(
-            combo >= 10 ? "PERFEITO!" : "ACERTOU!"
+        /*
+            Recupera um pouco de HP.
+        */
+        hp = Math.min(
+            100,
+            hp + 2
         );
 
+
+        /*
+            Mensagem.
+        */
+        showMessage(
+            combo >= 10
+                ? "PERFEITO!"
+                : "ACERTOU!"
+        );
+
+
+        /*
+            Animação do jogador.
+        */
         player.classList.remove("dance");
 
         setTimeout(() => {
-            player.classList.add("dance");
+
+            if (gameRunning) {
+                player.classList.add("dance");
+            }
+
         }, 80);
 
+
+        /*
+            Remove a nota.
+        */
         setTimeout(() => {
-            closest.element.remove();
+
+            if (closest.element) {
+                closest.element.remove();
+            }
+
+            const index = notes.indexOf(closest);
+
+            if (index !== -1) {
+                notes.splice(index, 1);
+            }
+
         }, 100);
+
 
         updateInterface();
 
     } else {
 
+        /*
+            Apertou a direção errada
+            ou fora do tempo.
+        */
         miss();
     }
 }
 
+
+/*
+========================================
+MISS
+========================================
+*/
+
 function miss() {
+
+    if (!gameRunning) {
+        return;
+    }
 
     combo = 0;
 
     hp -= 8;
 
+    hp = Math.max(0, hp);
+
     showMessage("MISS!");
 
     updateInterface();
+
 
     if (hp <= 0) {
         gameOver();
     }
 }
 
+
+/*
+========================================
+MENSAGEM
+========================================
+*/
+
 function showMessage(text) {
 
     message.textContent = text;
 
     message.style.color =
-        text === "MISS!" ? "#ff3355" : "#fff";
+        text === "MISS!"
+            ? "#ff3355"
+            : "#fff";
+
 
     message.style.transform =
         "translate(-50%, -50%) scale(1.2)";
 
-    setTimeout(() => {
-        message.style.transform =
-            "translate(-50%, -50%) scale(1)";
-    }, 100);
 
     setTimeout(() => {
-        message.textContent = "";
+
+        message.style.transform =
+            "translate(-50%, -50%) scale(1)";
+
+    }, 100);
+
+
+    setTimeout(() => {
+
+        if (message.textContent === text) {
+            message.textContent = "";
+        }
+
     }, 400);
 }
+
+
+/*
+========================================
+INTERFACE
+========================================
+*/
 
 function updateInterface() {
 
     scoreText.textContent =
         `Score: ${score} | Combo: ${combo}`;
 
-    health.style.width = hp + "%";
+    health.style.width = `${hp}%`;
 }
+
+
+/*
+========================================
+GAME OVER
+========================================
+*/
 
 function gameOver() {
 
-    gameRunning = false;
-
-    music.pause();
-
-    player.classList.remove("dance");
-    enemy.classList.remove("dance");
-
-    /*
-        Se o jogador perder, mostra o resultado também.
-    */
-
-    setTimeout(() => {
-        showResults("GAME OVER");
-    }, 500);
-}
-
-function endGame() {
-
-    if (!gameRunning) return;
+    if (!gameRunning) {
+        return;
+    }
 
     gameRunning = false;
 
     music.pause();
 
+    if (animationFrame) {
+        cancelAnimationFrame(animationFrame);
+    }
+
     player.classList.remove("dance");
     enemy.classList.remove("dance");
 
-    /*
-        Atualiza a melhor pontuação.
-    */
 
+    /*
+        Salva recorde mesmo no game over.
+    */
     if (score > bestScore) {
 
         bestScore = score;
@@ -362,17 +627,75 @@ function endGame() {
         );
     }
 
+
     setTimeout(() => {
-        showResults("VOCÊ VENCEU!");
+
+        showResults("GAME OVER");
+
     }, 500);
 }
+
+
+/*
+========================================
+FIM NORMAL
+========================================
+*/
+
+function endGame() {
+
+    if (!gameRunning) {
+        return;
+    }
+
+    gameRunning = false;
+
+    music.pause();
+
+    if (animationFrame) {
+        cancelAnimationFrame(animationFrame);
+    }
+
+    player.classList.remove("dance");
+    enemy.classList.remove("dance");
+
+
+    /*
+        Atualiza recorde.
+    */
+    if (score > bestScore) {
+
+        bestScore = score;
+
+        localStorage.setItem(
+            "bestScore",
+            bestScore
+        );
+    }
+
+
+    setTimeout(() => {
+
+        showResults("VOCÊ VENCEU!");
+
+    }, 500);
+}
+
+
+/*
+========================================
+RESULTADO
+========================================
+*/
 
 function showResults(title) {
 
     resultScreen.style.display = "flex";
 
+
     const resultTitle =
         resultScreen.querySelector("h1");
+
 
     resultTitle.textContent = title;
 
@@ -382,22 +705,34 @@ function showResults(title) {
 
     bestScoreText.textContent = bestScore;
 
-    /*
-        Pequena animação nos números.
-    */
 
+    /*
+        Animação.
+    */
     finalScore.style.transform = "scale(1.2)";
     finalCombo.style.transform = "scale(1.2)";
 
+
     setTimeout(() => {
+
         finalScore.style.transform = "scale(1)";
         finalCombo.style.transform = "scale(1)";
+
     }, 250);
 }
 
+
+/*
+========================================
+TECLADO
+========================================
+*/
+
 document.addEventListener("keydown", event => {
 
-    if (!gameRunning) return;
+    if (!gameRunning) {
+        return;
+    }
 
     if (keys.includes(event.key)) {
 
@@ -407,34 +742,123 @@ document.addEventListener("keydown", event => {
     }
 });
 
+
 document.addEventListener("keyup", event => {
 
     const lane = keys.indexOf(event.key);
 
     if (lane !== -1) {
+
         targets[lane].classList.remove("active");
     }
 });
 
-/* Controles para celular */
 
-document.querySelectorAll(".mobileButton").forEach(button => {
+/*
+========================================
+TOUCH / CELULAR
+========================================
+*/
 
-    button.addEventListener("touchstart", event => {
+mobileButtons.forEach(button => {
+
+    const key = button.dataset.key;
+
+
+    function pressButton(event) {
 
         event.preventDefault();
 
-        if (gameRunning) {
-            hitNote(button.dataset.key);
+        if (!gameRunning) {
+            return;
         }
-    });
 
-    button.addEventListener("mousedown", event => {
+        button.classList.add("active");
+
+        hitNote(key);
+    }
+
+
+    function releaseButton(event) {
 
         event.preventDefault();
 
-        if (gameRunning) {
-            hitNote(button.dataset.key);
+        button.classList.remove("active");
+
+        const lane = keys.indexOf(key);
+
+        if (lane !== -1) {
+            targets[lane].classList.remove("active");
         }
+    }
+
+
+    /*
+        Touch.
+    */
+    button.addEventListener(
+        "touchstart",
+        pressButton,
+        { passive: false }
+    );
+
+    button.addEventListener(
+        "touchend",
+        releaseButton,
+        { passive: false }
+    );
+
+    button.addEventListener(
+        "touchcancel",
+        releaseButton,
+        { passive: false }
+    );
+
+
+    /*
+        Mouse.
+    */
+    button.addEventListener(
+        "mousedown",
+        pressButton
+    );
+
+    button.addEventListener(
+        "mouseup",
+        releaseButton
+    );
+
+    button.addEventListener(
+        "mouseleave",
+        releaseButton
+    );
+
+});
+
+
+/*
+========================================
+CLIQUE NOS ALVOS
+========================================
+*/
+
+targets.forEach((target, index) => {
+
+    target.addEventListener("click", () => {
+
+        if (!gameRunning) {
+            return;
+        }
+
+        const key = keys[index];
+
+        target.classList.add("active");
+
+        setTimeout(() => {
+            target.classList.remove("active");
+        }, 100);
+
+        hitNote(key);
     });
+
 });
